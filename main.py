@@ -100,4 +100,30 @@ def schedule_tweet(account_id: int, tweet: Tweet, session: Session = Depends(get
     return {"status": "success"}
 # 4. 【重要】フロントエンドを表示するための設定
 # これを一番最後に書くことで、/ にアクセスした時に static/index.html を探してくれます
+
+import os
+import shutil
+from fastapi import UploadFile, File
+
+UPLOAD_DIR = "static/uploads"
+
+# アカウントごとの画像一覧を取得
+@app.get("/accounts/{account_id}/images")
+def list_images(account_id: int):
+    path = f"{UPLOAD_DIR}/{account_id}"
+    if not os.path.exists(path):
+        return []
+    return os.listdir(path)
+
+# 画像をアップロード
+@app.post("/accounts/{account_id}/upload")
+async def upload_image(account_id: int, file: UploadFile = File(...)):
+    path = f"{UPLOAD_DIR}/{account_id}"
+    os.makedirs(path, exist_ok=True) # フォルダがなければ作成
+    
+    file_path = os.path.join(path, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"filename": file.filename}
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

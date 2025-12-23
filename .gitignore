@@ -17,3 +17,6 @@ memo.md
 
 # Environment variables
 .env
+
+# Uploaded image files
+static/uploads/

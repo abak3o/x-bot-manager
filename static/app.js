@@ -35,26 +35,167 @@ async function loadAccountDetail(id) {
     
     document.getElementById('account-name').innerText = `${data.account_name} の投稿管理`;
 
-    const scheduledList = document.getElementById('scheduled-list');
-    const historyList = document.getElementById('history-list');
+    // タイムライン表示（予約と履歴を統合）
+    renderTimeline(data.tweets);
+    
+    // 画像読み込み
+    loadImages(id);
+    
+    // 画像アップロード機能の初期化
+    setupImageUpload(id);
+    
+    // 予約時間の最小値を現在時刻に設定
+    setMinimumDateTime();
+    
+    // テキストエリアの文字数カウント
+    setupCharCounter();
+}
 
-    // 予約(is_posted: false)と履歴(is_posted: true)に振り分け
-    const scheduled = data.tweets.filter(t => !t.is_posted);
-    const history = data.tweets.filter(t => t.is_posted);
+// 予約時間の最小値を現在時刻に設定（過去時間は選択不可）
+function setMinimumDateTime() {
+    const scheduledAtInput = document.getElementById('scheduled_at');
+    if (!scheduledAtInput) return;
+    
+    // 現在時刻を取得して5分後の時刻を設定（推奨値）
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    
+    // datetime-local形式（YYYY-MM-DDTHH:mm）
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    
+    const minDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    // 最小値を設定（過去は選択不可）
+    scheduledAtInput.min = minDateTime;
+    scheduledAtInput.value = minDateTime;
+}
 
-    scheduledList.innerHTML = scheduled.map(t => `
-        <div class="card">
+// テキストエリアの文字数カウント
+function setupCharCounter() {
+    const contentInput = document.getElementById('content');
+    const charCount = document.getElementById('char-count');
+    
+    if (!contentInput || !charCount) return;
+    
+    const updateCount = () => {
+        const count = contentInput.value.length;
+        charCount.textContent = `${count} / 280`;
+        charCount.style.color = count > 280 ? '#dc3545' : '#666';
+    };
+    
+    contentInput.addEventListener('input', updateCount);
+    updateCount();
+}
+
+// 画像一覧の読み込み
+async function loadImages(accountId) {
+    const res = await fetch(`/accounts/${accountId}/images`);
+    const images = await res.json();
+    
+    const gallery = document.getElementById('image-gallery');
+    if (!gallery) return;
+    
+    gallery.innerHTML = images.map(img => `
+        <img src="/uploads/${accountId}/${img}" alt="${img}" onclick="selectImage(this)">
+    `).join('');
+}
+
+// 画像アップロード設定
+function setupImageUpload(accountId) {
+    const dropZone = document.getElementById('drop-zone');
+    if (!dropZone) return;
+    
+    // クリックでファイル選択（複数対応）
+    dropZone.onclick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.multiple = true; // 複数ファイル選択を許可
+        input.onchange = (e) => uploadImages(accountId, e.target.files);
+        input.click();
+    };
+    
+    // ドラッグ&ドロップ（複数ファイル対応）
+    dropZone.ondragover = (e) => {
+        e.preventDefault();
+        dropZone.style.background = '#e0e0e0';
+    };
+    
+    dropZone.ondragleave = () => {
+        dropZone.style.background = '';
+    };
+    
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.style.background = '';
+        if (e.dataTransfer.files.length > 0) {
+            uploadImages(accountId, e.dataTransfer.files);
+        }
+    };
+}
+
+// 複数画像アップロード実行
+async function uploadImages(accountId, files) {
+    let uploadedCount = 0;
+    
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+            alert(`${file.name} は画像ファイルではありません`);
+            continue;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const res = await fetch(`/accounts/${accountId}/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (res.ok) {
+                uploadedCount++;
+            }
+        } catch (err) {
+            alert(`${file.name} のアップロードに失敗しました`);
+        }
+    }
+    
+    if (uploadedCount > 0) {
+        alert(`${uploadedCount}枚の画像をアップロードしました`);
+        loadImages(accountId); // 再読み込み
+    }
+}
+
+// 画像選択
+function selectImage(img) {
+    document.querySelectorAll('.gallery img').forEach(i => i.classList.remove('selected'));
+    img.classList.add('selected');
+}
+
+// タイムライン描画
+function renderTimeline(tweets) {
+    const timeline = document.getElementById('combined-timeline');
+    if (!timeline) return; // タイムラインが存在しない場合は終了
+    
+    // 日付順（新しい順）にソート
+    const sorted = tweets.sort((a, b) => {
+        const dateA = new Date(b.scheduled_at || b.posted_at);
+        const dateB = new Date(a.scheduled_at || a.posted_at);
+        return dateB - dateA;
+    });
+
+    timeline.innerHTML = sorted.map(t => `
+        <div class="timeline-item ${t.is_posted ? 'posted' : 'scheduled'}">
+            <div class="status-badge">${t.is_posted ? '✓' : '⏰'}</div>
             <p>${t.content}</p>
-            <p class="label">予定: ${new Date(t.scheduled_at).toLocaleString()}</p>
+            <small>${new Date(t.scheduled_at || t.posted_at).toLocaleString()}</small>
         </div>
-    `).join('') || '<p>予定はありません</p>';
-
-    historyList.innerHTML = history.map(t => `
-        <div class="card" style="background: #f0f0f0;">
-            <p>${t.content}</p>
-            <p class="label">投稿済: ${new Date(t.posted_at).toLocaleString()}</p>
-        </div>
-    `).join('') || '<p>履歴はありません</p>';
+    `).join('') || '<p>まだ投稿がありません</p>';
 }
 
 // 4. 予約フォームの送信処理
