@@ -56,6 +56,47 @@ def save_account(account: Account, session: Session = Depends(get_session)):
     session.commit()
     return {"status": "success"}
 
+# アカウント情報の取得
+@app.get("/accounts/{account_id}")
+def get_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    # 暗号化されたキーはそのまま返す（セキュリティのため平文に戻さない）
+    return {
+        "id": account.id,
+        "name": account.name,
+        "api_key": "****",  # マスク表示
+        "api_secret": "****",
+        "access_token": "****",
+        "access_token_secret": "****"
+    }
+
+# アカウント情報の更新
+@app.put("/accounts/{account_id}")
+def update_account(account_id: int, data: dict, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    # 更新可能フィールド
+    if "name" in data:
+        account.name = data["name"]
+    
+    # APIキーが送られてきた場合のみ更新（空でない場合）
+    if data.get("api_key") and data["api_key"] != "****":
+        account.api_key = encrypt_data(data["api_key"])
+    if data.get("api_secret") and data["api_secret"] != "****":
+        account.api_secret = encrypt_data(data["api_secret"])
+    if data.get("access_token") and data["access_token"] != "****":
+        account.access_token = encrypt_data(data["access_token"])
+    if data.get("access_token_secret") and data["access_token_secret"] != "****":
+        account.access_token_secret = encrypt_data(data["access_token_secret"])
+    
+    session.add(account)
+    session.commit()
+    return {"status": "success"}
+
 # 3. テスト投稿実行
 @app.post("/accounts/{account_id}/test-tweet")
 def test_tweet(account_id: int, session: Session = Depends(get_session)):

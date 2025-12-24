@@ -12,7 +12,11 @@ async function loadAccounts() {
     }
 
     grid.innerHTML = accounts.map(acc => `
-        <div class="card" style="cursor: pointer;" onclick="location.href='account_detail.html?id=${acc.id}'">
+        <div class="card" style="cursor: pointer; position: relative;" onclick="location.href='account_detail.html?id=${acc.id}'">
+            <button onclick="event.stopPropagation(); editAccount(${acc.id}, '${acc.name}')" 
+                    style="position:absolute; top:10px; right:10px; background:none; border:none; cursor:pointer; font-size:20px; color:#666;">
+                ⚙️
+            </button>
             <h3>${acc.name}</h3>
             <p><span class="label">最終ツイート</span> ${acc.last_tweet}</p>
             <p><span class="label">次回予定</span> ${acc.next_scheduled}</p>
@@ -26,6 +30,36 @@ async function testPost(accountId) {
     const res = await fetch(`/accounts/${accountId}/test-tweet`, { method: 'POST' });
     if (res.ok) alert('ツイート成功！');
     else alert('エラーが発生しました');
+}
+
+// アカウント編集
+async function editAccount(accountId, accountName) {
+    const newName = prompt('アカウント名を変更:', accountName);
+    if (!newName || newName === accountName) return;
+    
+    const apiKey = prompt('API Key (変更しない場合は空白):', '');
+    const apiSecret = prompt('API Secret (変更しない場合は空白):', '');
+    const accessToken = prompt('Access Token (変更しない場合は空白):', '');
+    const accessTokenSecret = prompt('Access Token Secret (変更しない場合は空白):', '');
+    
+    const data = { name: newName };
+    if (apiKey) data.api_key = apiKey;
+    if (apiSecret) data.api_secret = apiSecret;
+    if (accessToken) data.access_token = accessToken;
+    if (accessTokenSecret) data.access_token_secret = accessTokenSecret;
+    
+    const res = await fetch(`/accounts/${accountId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    
+    if (res.ok) {
+        alert('アカウント情報を更新しました');
+        loadAccounts(); // 再読み込み
+    } else {
+        alert('更新に失敗しました');
+    }
 }
 
 // 3. 詳細画面のデータを読み込む
@@ -258,25 +292,79 @@ function clearSelectedImage() {
     updateSelectedImagesPreview();
 }
 
-// タイムライン描画
+// タイムライン描画（次回投稿を真ん中に配置）
 function renderTimeline(tweets) {
     const timeline = document.getElementById('combined-timeline');
-    if (!timeline) return; // タイムラインが存在しない場合は終了
+    if (!timeline) return;
     
-    // 日付順（新しい順）にソート
-    const sorted = tweets.sort((a, b) => {
-        const dateA = new Date(b.scheduled_at || b.posted_at);
-        const dateB = new Date(a.scheduled_at || a.posted_at);
-        return dateB - dateA;
-    });
+    const now = new Date();
+    
+    // 投稿済みと未投稿に分類
+    const posted = tweets.filter(t => t.is_posted).sort((a, b) => new Date(b.posted_at) - new Date(a.posted_at));
+    const scheduled = tweets.filter(t => !t.is_posted).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    
+    // 次回投稿（scheduled の最初）
+    const nextTweet = scheduled.length > 0 ? scheduled[0] : null;
+    const otherScheduled = scheduled.slice(1);
+    
+    let html = '';
+    
+    // 最近の投稿（最大5件）
+    if (posted.length > 0) {
+        html += '<h4 style="color:#666; font-size:0.9em; margin:15px 0 10px 0;">最近の投稿</h4>';
+        posted.slice(0, 5).forEach(t => {
+            html += renderTweetItem(t, true);
+        });
+    }
+    
+    // 次回投稿（目立つように）
+    if (nextTweet) {
+        html += '<h4 style="color:#1da1f2; font-size:0.9em; margin:20px 0 10px 0;">📍 次回投稿</h4>';
+        html += renderTweetItem(nextTweet, false, true);
+    }
+    
+    // その他の予約
+    if (otherScheduled.length > 0) {
+        html += '<h4 style="color:#666; font-size:0.9em; margin:20px 0 10px 0;">予約済み</h4>';
+        otherScheduled.forEach(t => {
+            html += renderTweetItem(t, false);
+        });
+    }
+    
+    timeline.innerHTML = html || '<p style="color:#999;">まだ投稿がありません</p>';
+}
 
-    timeline.innerHTML = sorted.map(t => `
-        <div class="timeline-item ${t.is_posted ? 'posted' : 'scheduled'}">
-            <div class="status-badge">${t.is_posted ? '✓' : '⏰'}</div>
-            <p>${t.content}</p>
-            <small>${new Date(t.scheduled_at || t.posted_at).toLocaleString()}</small>
+// ツイートアイテムを描画（画像サムネイル付き）
+function renderTweetItem(tweet, isPosted, isNext = false) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const accountId = urlParams.get('id');
+    
+    // 画像サムネイル生成
+    let imagesHtml = '';
+    try {
+        const imageNames = JSON.parse(tweet.image_names || '[]');
+        if (imageNames.length > 0) {
+            imagesHtml = '<div style="display:flex; gap:4px; margin-top:8px; flex-wrap:wrap;">';
+            imageNames.slice(0, 4).forEach(img => {
+                imagesHtml += `<img src="/uploads/${accountId}/${img}" style="width:50px; height:50px; object-fit:cover; border-radius:4px; border:1px solid #ddd;">`;
+            });
+            imagesHtml += '</div>';
+        }
+    } catch (e) {
+        // JSON解析失敗時は無視
+    }
+    
+    const date = new Date(tweet.scheduled_at || tweet.posted_at);
+    const borderStyle = isNext ? 'border-left: 4px solid #1da1f2;' : '';
+    
+    return `
+        <div class="timeline-item ${isPosted ? 'posted' : 'scheduled'}" style="${borderStyle}">
+            <div class="status-badge">${isPosted ? '✓' : '⏰'}</div>
+            <p>${tweet.content || '(画像のみ)'}</p>
+            ${imagesHtml}
+            <small>${date.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</small>
         </div>
-    `).join('') || '<p>まだ投稿がありません</p>';
+    `;
 }
 
 // 4. 予約フォームの送信処理
@@ -288,10 +376,19 @@ if (tweetForm) {
         const id = urlParams.get('id');
 
         const content = document.getElementById('content').value.trim();
+        const scheduledAtValue = document.getElementById('scheduled_at').value;
         
         // テキストと画像の両方が空でないか確認
         if (!content && selectedImages.length === 0) {
             alert('テキストまたは画像を選択してください');
+            return;
+        }
+
+        // 予約時刻が現在時刻より前でないかチェック
+        const scheduledDate = new Date(scheduledAtValue);
+        const now = new Date();
+        if (scheduledDate <= now) {
+            alert('予約時刻は現在時刻より後に設定してください');
             return;
         }
 
@@ -304,7 +401,7 @@ if (tweetForm) {
         const data = {
             content: content,
             image_names: imageNames,
-            scheduled_at: document.getElementById('scheduled_at').value
+            scheduled_at: scheduledAtValue
         };
 
         const res = await fetch(`/accounts/${id}/tweets`, {
