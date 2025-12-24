@@ -147,3 +147,13 @@ async def upload_image(account_id: int, file: UploadFile = File(...)):
     
     return {"filename": file.filename}
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# main.py の冒頭に追加
+from services.scheduler import start_scheduler
+
+# ... (既存のコード) ...
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+    # スケジューラーをバックグラウンドで開始！
+    start_scheduler()
