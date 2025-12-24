@@ -13,7 +13,7 @@ async function loadAccounts() {
 
     grid.innerHTML = accounts.map(acc => `
         <div class="card" style="cursor: pointer; position: relative;" onclick="location.href='account_detail.html?id=${acc.id}'">
-            <button onclick="event.stopPropagation(); editAccount(${acc.id}, '${acc.name}')" 
+            <button onclick="event.stopPropagation(); editAccount(${acc.id})" 
                     style="position:absolute; top:10px; right:10px; background:none; border:none; cursor:pointer; font-size:20px; color:#666;">
                 ⚙️
             </button>
@@ -32,34 +32,9 @@ async function testPost(accountId) {
     else alert('エラーが発生しました');
 }
 
-// アカウント編集
-async function editAccount(accountId, accountName) {
-    const newName = prompt('アカウント名を変更:', accountName);
-    if (!newName || newName === accountName) return;
-    
-    const apiKey = prompt('API Key (変更しない場合は空白):', '');
-    const apiSecret = prompt('API Secret (変更しない場合は空白):', '');
-    const accessToken = prompt('Access Token (変更しない場合は空白):', '');
-    const accessTokenSecret = prompt('Access Token Secret (変更しない場合は空白):', '');
-    
-    const data = { name: newName };
-    if (apiKey) data.api_key = apiKey;
-    if (apiSecret) data.api_secret = apiSecret;
-    if (accessToken) data.access_token = accessToken;
-    if (accessTokenSecret) data.access_token_secret = accessTokenSecret;
-    
-    const res = await fetch(`/accounts/${accountId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    
-    if (res.ok) {
-        alert('アカウント情報を更新しました');
-        loadAccounts(); // 再読み込み
-    } else {
-        alert('更新に失敗しました');
-    }
+// アカウント編集（編集ページへリダイレクト）
+function editAccount(accountId) {
+    location.href = `edit_account.html?id=${accountId}`;
 }
 
 // 3. 詳細画面のデータを読み込む
