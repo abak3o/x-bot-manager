@@ -63,7 +63,7 @@ async function loadAccountDetail(id) {
 // 予約時間の最小値を現在時刻に設定（過去時間は選択不可）
 function setMinimumDateTime() {
     const scheduledAtInput = document.getElementById('scheduled_at');
-    if (!scheduledAtInput) return;
+    const bulkStartTimeInput = document.getElementById('bulk_start_time');
     
     // 現在時刻を取得して5分後の時刻を設定（推奨値）
     const now = new Date();
@@ -79,8 +79,14 @@ function setMinimumDateTime() {
     const minDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
     
     // 最小値を設定（過去は選択不可）
-    scheduledAtInput.min = minDateTime;
-    scheduledAtInput.value = minDateTime;
+    if (scheduledAtInput) {
+        scheduledAtInput.min = minDateTime;
+        scheduledAtInput.value = minDateTime;
+    }
+    if (bulkStartTimeInput) {
+        bulkStartTimeInput.min = minDateTime;
+        bulkStartTimeInput.value = minDateTime;
+    }
 }
 
 // テキストエリアの文字数カウント
@@ -379,22 +385,244 @@ if (tweetForm) {
             scheduled_at: scheduledAtValue
         };
 
-        const res = await fetch(`/accounts/${id}/tweets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
+        try {
+            const res = await fetch(`/accounts/${id}/tweets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
 
-        if (res.ok) {
-            alert('予約しました！');
-            selectedImages = [];  // リセット
-            location.reload(); // 再読み込みして一覧を更新
-        } else {
-            const error = await res.json();
-            alert(`エラー: ${error.detail}`);
+            if (res.ok) {
+                alert('✅ 予約しました！');
+                selectedImages = [];  // リセット
+                clearSelectedImage();
+                document.getElementById('content').value = '';
+                updateSelectedImagesPreview();
+                location.reload(); // 再読み込みして一覧を更新
+            } else {
+                const error = await res.json();
+                alert(`❌ エラーが発生しました:\n${error.detail || '不明なエラー'}`);
+            }
+        } catch (err) {
+            alert(`❌ 通信エラーが発生しました:\n${err.message}`);
         }
     };
 }
 
 // ダッシュボード読み込み（index.htmlで実行）
 loadAccounts();
+
+// === 一括予約モード関連関数 ===
+
+// 一括予約モードの切り替え
+function toggleBulkMode() {
+    const isBulkMode = document.getElementById('bulkModeToggle').checked;
+    document.getElementById('tweetForm').style.display = isBulkMode ? 'none' : 'block';
+    document.getElementById('bulkTweetForm').style.display = isBulkMode ? 'block' : 'none';
+    
+    // ヒントセクションも切り替え
+    const normalHint = document.getElementById('normalModeHint');
+    const bulkHint = document.getElementById('bulkModeHint');
+    if (normalHint) normalHint.style.display = isBulkMode ? 'none' : 'block';
+    if (bulkHint) bulkHint.style.display = isBulkMode ? 'block' : 'none';
+    
+    // モード切り替え時にプレビューをリセット
+    if (isBulkMode) {
+        updateBulkPreview();
+    }
+}
+
+// 一括予約のテキストプレビューを更新
+function updateBulkTextPreview() {
+    const textMode = document.getElementById('bulk_text_mode').value;
+    const textInputGroup = document.getElementById('bulk_text_input_group');
+    
+    if (textMode === 'fixed') {
+        // 固定テキスト：テキスト入力が必須
+        textInputGroup.style.display = 'block';
+        document.getElementById('bulk_text').placeholder = '全ツイート共通のテキストを入力';
+        document.getElementById('bulk_text').required = true;
+    } else if (textMode === 'number') {
+        // 連番：テキスト入力は任意（プレフィックス）
+        textInputGroup.style.display = 'block';
+        document.getElementById('bulk_text').placeholder = 'テキストなしでも OK（例：「Day」と入力すると「Day (1/3)」のようになります）';
+        document.getElementById('bulk_text').required = false;
+    } else if (textMode === 'filename') {
+        // ファイル名モード：テキスト入力は不要
+        textInputGroup.style.display = 'none';
+        document.getElementById('bulk_text').required = false;
+    } else {
+        textInputGroup.style.display = 'none';
+        document.getElementById('bulk_text').required = false;
+    }
+    
+    updateBulkPreview();
+}
+
+// 一括予約プレビューを更新
+function updateBulkPreview() {
+    if (selectedImages.length === 0) {
+        document.getElementById('bulk_preview').innerHTML = '<p style="color: #999;">画像を選択してください</p>';
+        document.getElementById('bulk_tweet_count').textContent = '0';
+        return;
+    }
+
+    const startTime = document.getElementById('bulk_start_time').value;
+    const interval = parseInt(document.getElementById('bulk_interval').value) || 0;
+    const textMode = document.getElementById('bulk_text_mode').value;
+    const textContent = document.getElementById('bulk_text').value;
+
+    if (!startTime || !interval || !textMode) {
+        document.getElementById('bulk_preview').innerHTML = '<p style="color: #999;">開始日時、間隔、テキスト設定を選択してください</p>';
+        document.getElementById('bulk_tweet_count').textContent = '0';
+        return;
+    }
+
+    const startDate = new Date(startTime);
+    let html = '<div style="max-height: 300px; overflow-y: auto;">';
+
+    selectedImages.forEach((img, index) => {
+        const scheduleDate = new Date(startDate);
+        scheduleDate.setHours(scheduleDate.getHours() + interval * index);
+
+        let text = '';
+        if (textMode === 'fixed') {
+            text = textContent;
+        } else if (textMode === 'number') {
+            text = `${textContent ? textContent + ' ' : ''}(${index + 1}/${selectedImages.length})`;
+        } else if (textMode === 'filename') {
+            text = img.name.replace(/\.[^/.]+$/, ''); // 拡張子を除去
+        }
+
+        // 予約内容のサマリーを生成
+        const timeStr = scheduleDate.toLocaleString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        html += `
+            <div style="padding: 10px; border-bottom: 1px solid #eee; background: ${index % 2 === 0 ? '#fff' : '#f9f9f9'};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <small style="color: #1da1f2; font-weight: bold; font-size: 0.8em;">投稿 ${index + 1}/${selectedImages.length}</small>
+                    <small style="color: #666; font-size: 0.75em;">${timeStr}</small>
+                </div>
+                <p style="margin: 3px 0; font-size: 0.85em; word-break: break-word; color: #333;">${text || '(テキストなし)'}</p>
+                <small style="color: #999; font-size: 0.75em;">📷 ${img.name}</small>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    document.getElementById('bulk_preview').innerHTML = html;
+    document.getElementById('bulk_tweet_count').textContent = selectedImages.length;
+}
+
+// 一括予約フォーム送信
+const bulkTweetForm = document.getElementById('bulkTweetForm');
+if (bulkTweetForm) {
+    bulkTweetForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get('id');
+
+        if (selectedImages.length === 0) {
+            alert('画像を選択してください');
+            return;
+        }
+
+        const startTime = document.getElementById('bulk_start_time').value;
+        const interval = parseInt(document.getElementById('bulk_interval').value);
+        const textMode = document.getElementById('bulk_text_mode').value;
+        const textContent = document.getElementById('bulk_text').value;
+
+        if (!startTime || !interval || !textMode) {
+            alert('すべての項目を入力してください');
+            return;
+        }
+
+        // ツイート生成
+        const tweets = [];
+        const startDate = new Date(startTime);
+
+        selectedImages.forEach((img, index) => {
+            const scheduleDate = new Date(startDate);
+            scheduleDate.setHours(scheduleDate.getHours() + interval * index);
+
+            let text = '';
+            if (textMode === 'fixed') {
+                text = textContent;
+            } else if (textMode === 'number') {
+                text = `${textContent ? textContent + ' ' : ''}(${index + 1}/${selectedImages.length})`;
+            } else if (textMode === 'filename') {
+                text = img.name.replace(/\.[^/.]+$/, '');
+            }
+
+            // 日時をローカル時刻でフォーマット（YYYY-MM-DDTHH:mm）
+            const year = scheduleDate.getFullYear();
+            const month = String(scheduleDate.getMonth() + 1).padStart(2, '0');
+            const day = String(scheduleDate.getDate()).padStart(2, '0');
+            const hours = String(scheduleDate.getHours()).padStart(2, '0');
+            const minutes = String(scheduleDate.getMinutes()).padStart(2, '0');
+            const scheduledAtFormatted = `${year}-${month}-${day}T${hours}:${minutes}`;
+
+            tweets.push({
+                content: text,
+                image_names: [img.name],
+                scheduled_at: scheduledAtFormatted
+            });
+        });
+
+        // バックエンドに送信
+        try {
+            const res = await fetch(`/accounts/${id}/bulk-tweets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tweets })
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                alert(`✅ ${tweets.length}件の投稿を予約しました！\n\nアカウント詳細ページで確認できます。`);
+                selectedImages = [];
+                clearSelectedImage();
+                // フォームをリセット
+                document.getElementById('bulk_start_time').value = '';
+                document.getElementById('bulk_interval').value = '';
+                document.getElementById('bulk_text_mode').value = '';
+                document.getElementById('bulk_text').value = '';
+                updateBulkPreview();
+                location.reload();
+            } else {
+                const error = await res.json();
+                alert(`❌ エラーが発生しました:\n${error.detail || '不明なエラー'}`);
+            }
+        } catch (err) {
+            alert(`❌ 通信エラーが発生しました:\n${err.message}`);
+        }
+    };
+}
+
+// 画像選択時にプレビューを更新（一括モードの場合）
+const originalUpdateSelectedImagesPreview = updateSelectedImagesPreview;
+updateSelectedImagesPreview = function() {
+    originalUpdateSelectedImagesPreview.call(this);
+    if (document.getElementById('bulkModeToggle')?.checked) {
+        updateBulkPreview();
+    }
+};
+
+// 一括モード関連フィールドの変更を監視
+document.addEventListener('change', (e) => {
+    if (['bulk_start_time', 'bulk_interval', 'bulk_text_mode', 'bulk_text'].includes(e.target.id)) {
+        updateBulkPreview();
+    }
+});
+
+document.addEventListener('input', (e) => {
+    if (e.target.id === 'bulk_text') {
+        updateBulkPreview();
+    }
+});
