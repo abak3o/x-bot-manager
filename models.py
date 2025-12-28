@@ -41,3 +41,16 @@ class CSVText(SQLModel, table=True):
     account_id: int = Field(unique=True)  # アカウントごとに1レコード
     texts: str = Field(default="[]")  # JSON配列で最大100件のテキストを保存
     updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# --- 時間単位スケジュール設定 ---
+class HourlySchedule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    account_id: int  # アカウントID
+    name: str  # スケジュール設定の名前（例: "平日スケジュール"）
+    hours: str = Field(
+        default="[]"
+    )  # 投稿する時間のJSON配列（例: ["09:00", "12:00", "15:00"]）
+    is_active: bool = Field(default=True)  # スケジュールが有効かどうか
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

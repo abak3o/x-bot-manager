@@ -53,6 +53,9 @@ async function loadAccountDetail(id) {
     // CSVテキストを読み込み
     await loadCSVTexts(id);
     
+    // スケジュール設定を読み込み（非同期で待たない）
+    loadScheduleSelects(id);
+    
     // 画像アップロード機能の初期化
     setupImageUpload(id);
     
@@ -961,6 +964,7 @@ function updateBulkPreview() {
 
     const startDate = new Date(startTime);
     let html = '';
+    const addNumber = document.getElementById('bulk_number_toggle')?.checked || false;
 
     selectedImages.forEach((img, index) => {
         const scheduleDate = new Date(startDate);
@@ -970,7 +974,8 @@ function updateBulkPreview() {
         if (textMode === 'fixed') {
             text = textContent;
         } else if (textMode === 'number') {
-            text = `${textContent ? textContent + ' ' : ''}(${index + 1}/${selectedImages.length})`;
+            const baseText = textContent || '';
+            text = addNumber ? `${baseText ? baseText + ' ' : ''}(${index + 1}/${selectedImages.length})` : baseText;
         } else if (textMode === 'filename') {
             text = img.name.replace(/\.[^/.]+$/, '');
         } else if (textMode === 'csv') {
@@ -1041,8 +1046,14 @@ function updateSingleCardPreview() {
                 timeStr = startTime;
             }
             
+            const addNumber = document.getElementById('mega_number_toggle')?.checked || false;
             const baseText = useCSV ? (csvTexts[index] || '') : text;
-            const displayText = baseText ? `${baseText} (${index + 1}/${current.length})` : `(${index + 1}/${current.length})`;
+            let displayText = '';
+            if (addNumber) {
+                displayText = baseText ? `${baseText} (${index + 1}/${current.length})` : `(${index + 1}/${current.length})`;
+            } else {
+                displayText = baseText || '(テキストなし)';
+            }
             
             html += `
                 <div class="card-preview-item" draggable="true" data-index="${index}" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)">
@@ -1106,6 +1117,8 @@ if (bulkTweetForm) {
         const tweets = [];
         const startDate = new Date(startTime);
 
+        const addNumber = document.getElementById('bulk_number_toggle')?.checked || false;
+
         selectedImages.forEach((img, index) => {
             const scheduleDate = new Date(startDate);
             scheduleDate.setMinutes(scheduleDate.getMinutes() + intervalMinutes * index);
@@ -1114,7 +1127,8 @@ if (bulkTweetForm) {
             if (textMode === 'fixed') {
                 text = textContent;
             } else if (textMode === 'number') {
-                text = `${textContent ? textContent + ' ' : ''}(${index + 1}/${selectedImages.length})`;
+                const baseText = textContent || '';
+                text = addNumber ? `${baseText ? baseText + ' ' : ''}(${index + 1}/${selectedImages.length})` : baseText;
             } else if (textMode === 'filename') {
                 text = img.name.replace(/\.[^/.]+$/, '');
             } else if (textMode === 'csv') {
@@ -1218,7 +1232,13 @@ if (megaScheduleButton) {
             const scheduledAtFormatted = `${year}-${month}-${day}T${hours}:${minutes}`;
 
             const baseText = useCSV ? (csvTexts[i] || '') : text;
-            const content = baseText ? `${baseText} (${i + 1}/${total})` : `(${i + 1}/${total})`;
+            const addNumber = document.getElementById('mega_number_toggle')?.checked || false;
+            let content = '';
+            if (addNumber) {
+                content = baseText ? `${baseText} (${i + 1}/${total})` : `(${i + 1}/${total})`;
+            } else {
+                content = baseText;
+            }
 
             // 進捗表示
             if (progressText) progressText.textContent = `${i + 1} / ${total} アップロード中...`;
@@ -1321,3 +1341,97 @@ function handleDragEnd(e) {
     });
     draggedIndex = null;
 }
+
+// ===== スケジュール関連の関数 =====
+
+// スケジュール設定を読み込んでドロップダウンに表示
+async function loadScheduleSelects(accountId) {
+    try {
+        const response = await fetch(`/accounts/${accountId}/hourly-schedules`);
+        const schedules = await response.json();
+        
+        const selectIds = ['schedule_select_single', 'schedule_select_bulk', 'schedule_select_mega'];
+        
+        selectIds.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            
+            // 既存のオプションをクリア（最初の「選択してください」は残す）
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+            
+            // スケジュールをオプションに追加
+            schedules.forEach(schedule => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify(schedule.hours); // 時間配列をJSON文字列で保存
+                option.textContent = `${schedule.name} (${schedule.hours.join(', ')})`;
+                option.dataset.scheduleName = schedule.name;
+                select.appendChild(option);
+            });
+        });
+    } catch (error) {
+        console.error('スケジュール読み込みエラー:', error);
+    }
+}
+
+// スケジュール選択時のコールバック
+function onScheduleSelected(mode) {
+    const selectId = `schedule_select_${mode}`;
+    const hoursContainerId = `schedule_hours_${mode}`;
+    const select = document.getElementById(selectId);
+    const hoursContainer = document.getElementById(hoursContainerId);
+    
+    if (!select || !hoursContainer) return;
+    
+    const selectedValue = select.value;
+    
+    if (!selectedValue) {
+        hoursContainer.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const hours = JSON.parse(selectedValue);
+        
+        // 時間候補を表示
+        const hoursDiv = hoursContainer.querySelector('div');
+        hoursDiv.innerHTML = hours.map(hour => `
+            <button type="button" class="hour-btn" onclick="setScheduleTime('${mode}', '${hour}'); event.preventDefault();" style="padding:8px 12px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; cursor:pointer;">
+                ${hour}
+            </button>
+        `).join('');
+        
+        hoursContainer.style.display = 'block';
+    } catch (error) {
+        console.error('スケジュール解析エラー:', error);
+        hoursContainer.style.display = 'none';
+    }
+}
+
+// スケジュール時間を開始日時に設定
+function setScheduleTime(mode, hour) {
+    // 今日の指定時間を開始日時に設定
+    const today = new Date();
+    const [hourStr, minuteStr] = hour.split(':');
+    today.setHours(parseInt(hourStr), parseInt(minuteStr), 0, 0);
+    
+    // ISO形式に変換（datetime-local形式）
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const date = String(today.getDate()).padStart(2, '0');
+    const hours = String(today.getHours()).padStart(2, '0');
+    const minutes = String(today.getMinutes()).padStart(2, '0');
+    
+    const datetimeStr = `${year}-${month}-${date}T${hours}:${minutes}`;
+    
+    // 対応するinputに値を設定
+    if (mode === 'single') {
+        document.getElementById('scheduled_at').value = datetimeStr;
+    } else if (mode === 'bulk') {
+        document.getElementById('bulk_start_time').value = datetimeStr;
+    } else if (mode === 'mega') {
+        document.getElementById('mega_start_time').value = datetimeStr;
+    }
+}
+

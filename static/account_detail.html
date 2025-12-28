@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>投稿管理 - X Manager</title>
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
     <div class="container">
@@ -11,6 +11,7 @@
             <h1 id="account-name">読み込み中...</h1>
             <div style="display:flex; gap:10px; align-items:center;">
                 <button id="themeToggle" class="btn-ghost" type="button">🌙 ダーク</button>
+                <a id="scheduleLink" href="#" class="btn-add" style="background:#ff7a1a;">⏰ スケジュール設定</a>
                 <a href="index.html" class="btn-add" style="background:#666;">ダッシュボードに戻る</a>
             </div>
         </header>
@@ -64,6 +65,21 @@
 
                         <div class="card-section">
                             <div class="form-group">
+                                <label for="schedule_select_single">保存済みスケジュール</label>
+                                <select id="schedule_select_single" onchange="onScheduleSelected('single')">
+                                    <option value="">選択してください（手動入力）</option>
+                                </select>
+                                <small style="color:#666; display:block; margin-top:5px;">スケジュールを選ぶと、下の時間候補が表示されます</small>
+                            </div>
+                            
+                            <div class="form-group" id="schedule_hours_single" style="display:none;">
+                                <label>スケジュール時間候補</label>
+                                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                    <!-- チェックボックスが動的に生成されます -->
+                                </div>
+                            </div>
+
+                            <div class="form-group">
                                 <label for="scheduled_at">予約日時</label>
                                 <input type="datetime-local" id="scheduled_at" required>
                             </div>
@@ -80,6 +96,21 @@
                     </div>
                     <form id="bulkTweetForm">
                         <div class="card-section">
+                            <div class="form-group">
+                                <label for="schedule_select_bulk">保存済みスケジュール</label>
+                                <select id="schedule_select_bulk" onchange="onScheduleSelected('bulk')">
+                                    <option value="">選択してください（手動入力）</option>
+                                </select>
+                                <small style="color:#666; display:block; margin-top:5px;">スケジュールを選ぶと、開始日時を簡単に設定できます</small>
+                            </div>
+                            
+                            <div class="form-group" id="schedule_hours_bulk" style="display:none;">
+                                <label>スケジュール時間候補</label>
+                                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                    <!-- チェックボックスが動的に生成されます -->
+                                </div>
+                            </div>
+
                             <div class="form-group">
                                 <label for="bulk_start_time">開始日時</label>
                                 <input type="datetime-local" id="bulk_start_time" required>
@@ -109,7 +140,7 @@
                                 <select id="bulk_text_mode" onchange="updateBulkTextPreview()" required>
                                     <option value="">選択してください</option>
                                     <option value="fixed">固定テキスト（全部同じ）</option>
-                                    <option value="number">連番（(1/N)を付ける）</option>
+                                    <option value="number">カスタムテキスト</option>
                                     <option value="filename">ファイル名を使用</option>
                                     <option value="csv">CSVファイルから読み込む</option>
                                 </select>
@@ -120,6 +151,13 @@
                                 <label for="bulk_text">テキスト</label>
                                 <textarea id="bulk_text" placeholder="全ツイート共通のテキストを入力&#10;（連番モードでは先頭に追加されます）"></textarea>
                                 <small id="bulk_text_preview" style="color:#666; margin-top:5px;"></small>
+                                
+                                <div style="margin-top: 12px; padding: 8px; background: var(--tab-bg); border-radius: 6px;">
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+                                        <input type="checkbox" id="bulk_number_toggle" style="cursor: pointer;" onchange="updateBulkPreview()">
+                                        <span>連番を付ける (1/N)</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <div class="form-group" id="bulk_csv_input_group" style="display: none;">
@@ -167,6 +205,21 @@
                     <h3 style="margin-top:0;">メガ予約モード（大量画像）</h3>
                     <p style="color:#666;">最大150枚を1枚ずつ順次送信します。</p>
                     <div class="form-group">
+                        <label for="schedule_select_mega">保存済みスケジュール</label>
+                        <select id="schedule_select_mega" onchange="onScheduleSelected('mega')">
+                            <option value="">選択してください（手動入力）</option>
+                        </select>
+                        <small style="color:#666; display:block; margin-top:5px;">スケジュールを選ぶと、開始日時を簡単に設定できます</small>
+                    </div>
+                    
+                    <div class="form-group" id="schedule_hours_mega" style="display:none;">
+                        <label>スケジュール時間候補</label>
+                        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                            <!-- チェックボックスが動的に生成されます -->
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="mega_start_time">開始日時</label>
                         <input type="datetime-local" id="mega_start_time">
                     </div>
@@ -199,7 +252,14 @@
                         </div>
                         <div id="mega_text_input_group">
                             <input type="text" id="mega_text" placeholder="例: Day">
-                            <small style="color:#666;">連番は自動で (1/N) 形式が付きます。</small>
+                            <small style="color:#666;">チェックを入れると連番が (1/N) 形式で付きます。</small>
+                            
+                            <div style="margin-top: 12px; padding: 8px; background: var(--tab-bg); border-radius: 6px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="mega_number_toggle" style="cursor: pointer;" onchange="updateSingleCardPreview()">
+                                    <span>連番を付ける (1/N)</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="form-group" id="mega_csv_input_group" style="display:none; margin-top:10px; border:1px dashed var(--border); padding:10px; border-radius:8px;">
                             <label for="mega_csv_file">CSVファイル（メガ予約用）</label>
@@ -250,13 +310,15 @@
             </aside>
         </div>
     </div>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
     <script>
         // このページが開かれた時に実行
         const urlParams = new URLSearchParams(window.location.search);
-        const accountId = urlParams.get('id');
+        const accountId = urlParams.get('account_id') || urlParams.get('id');
         if (accountId) {
             loadAccountDetail(accountId);
+            // スケジュール設定リンクを有効化
+            document.getElementById('scheduleLink').href = `schedule_settings.html?account_id=${accountId}`;
         }
     </script>
 </body>

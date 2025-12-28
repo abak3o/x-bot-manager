@@ -5,6 +5,7 @@ from models import (
     Account,
     Tweet,
     CSVText,
+    HourlySchedule,
     get_session,
     create_db_and_tables,
 )  # create_db_and_tablesを追加
@@ -443,6 +444,130 @@ def schedule_single_tweet(
         raise HTTPException(status_code=500, detail=f"DB保存エラー: {exc}")
 
     return {"status": "success"}
+
+
+# ===== 時間単位スケジュール設定のCRUD =====
+
+
+# 特定のアカウントのスケジュール設定一覧を取得
+@app.get("/accounts/{account_id}/hourly-schedules")
+def get_hourly_schedules(account_id: int, session: Session = Depends(get_session)):
+    """アカウントに紐づくスケジュール設定一覧を取得"""
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    schedules = session.exec(
+        select(HourlySchedule).where(HourlySchedule.account_id == account_id)
+    ).all()
+
+    # JSON文字列をリストに変換して返す
+    result = []
+    for schedule in schedules:
+        result.append(
+            {
+                "id": schedule.id,
+                "name": schedule.name,
+                "hours": json.loads(schedule.hours),
+                "is_active": schedule.is_active,
+                "created_at": schedule.created_at,
+                "updated_at": schedule.updated_at,
+            }
+        )
+
+    return result
+
+
+# スケジュール設定を新規作成
+@app.post("/accounts/{account_id}/hourly-schedules")
+def create_hourly_schedule(
+    account_id: int, data: dict, session: Session = Depends(get_session)
+):
+    """新しいスケジュール設定を作成"""
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    name = data.get("name", "").strip()
+    hours = data.get("hours", [])  # ["09:00", "12:00", "15:00"] の形式
+    is_active = data.get("is_active", True)
+
+    if not name:
+        raise HTTPException(status_code=400, detail="スケジュール名を入力してください")
+
+    if not hours or not isinstance(hours, list):
+        raise HTTPException(status_code=400, detail="時間を指定してください")
+
+    schedule = HourlySchedule(
+        account_id=account_id, name=name, hours=json.dumps(hours), is_active=is_active
+    )
+
+    session.add(schedule)
+    session.commit()
+    session.refresh(schedule)
+
+    return {
+        "status": "success",
+        "id": schedule.id,
+        "name": schedule.name,
+        "hours": json.loads(schedule.hours),
+        "is_active": schedule.is_active,
+    }
+
+
+# スケジュール設定を更新
+@app.put("/accounts/{account_id}/hourly-schedules/{schedule_id}")
+def update_hourly_schedule(
+    account_id: int,
+    schedule_id: int,
+    data: dict,
+    session: Session = Depends(get_session),
+):
+    """スケジュール設定を更新"""
+    schedule = session.get(HourlySchedule, schedule_id)
+    if not schedule or schedule.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    if "name" in data:
+        schedule.name = data["name"].strip()
+
+    if "hours" in data:
+        if not isinstance(data["hours"], list):
+            raise HTTPException(
+                status_code=400, detail="時間はリスト形式で指定してください"
+            )
+        schedule.hours = json.dumps(data["hours"])
+
+    if "is_active" in data:
+        schedule.is_active = data["is_active"]
+
+    schedule.updated_at = datetime.now()
+    session.add(schedule)
+    session.commit()
+
+    return {
+        "status": "success",
+        "id": schedule.id,
+        "name": schedule.name,
+        "hours": json.loads(schedule.hours),
+        "is_active": schedule.is_active,
+    }
+
+
+# スケジュール設定を削除
+@app.delete("/accounts/{account_id}/hourly-schedules/{schedule_id}")
+def delete_hourly_schedule(
+    account_id: int, schedule_id: int, session: Session = Depends(get_session)
+):
+    """スケジュール設定を削除"""
+    schedule = session.get(HourlySchedule, schedule_id)
+    if not schedule or schedule.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    session.delete(schedule)
+    session.commit()
+
+    return {"status": "success", "message": "スケジュール設定を削除しました"}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
