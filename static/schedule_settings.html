@@ -42,6 +42,10 @@
 
             <div class="form-group">
                 <label>投稿時間を選択（複数選択可）</label>
+                <div class="select-buttons" style="margin-bottom: 12px;">
+                    <button type="button" onclick="selectAllHours()" class="btn-secondary" style="margin-right: 8px;">すべて選択</button>
+                    <button type="button" onclick="deselectAllHours()" class="btn-secondary">すべて解除</button>
+                </div>
                 <div class="hours-grid" id="hoursGrid">
                     <!-- 時間チェックボックスが動的に生成されます -->
                 </div>

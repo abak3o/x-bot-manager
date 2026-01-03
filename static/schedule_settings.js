@@ -73,6 +73,27 @@ function generateHours() {
   }
 }
 
+// すべて選択
+function selectAllHours() {
+  const checkboxes = document.querySelectorAll("#hoursGrid input[type='checkbox']");
+  checkboxes.forEach((checkbox) => {
+    checkbox.checked = true;
+    if (!selectedHours.includes(checkbox.value)) {
+      selectedHours.push(checkbox.value);
+    }
+  });
+  selectedHours.sort();
+}
+
+// すべて解除
+function deselectAllHours() {
+  const checkboxes = document.querySelectorAll("#hoursGrid input[type='checkbox']");
+  checkboxes.forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+  selectedHours = [];
+}
+
 // スケジュール設定を作成
 async function createSchedule() {
   const name = document.getElementById("scheduleName").value.trim();
